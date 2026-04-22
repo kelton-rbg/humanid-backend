@@ -45,10 +45,6 @@ def analyze():
 if __name__ == "__main__":
     app.run(debug=True)
 
-from flask import Flask, request, jsonify, redirect
-
-app = Flask(__name__)
-
 @app.before_request
 def force_www_redirect():
     if request.host.startswith('www.'):
