@@ -1,16 +1,85 @@
+from flask import Flask, request, jsonify, redirect
 import requests
-from flask import Flask, request, jsonify
+import jwt
+import datetime
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'supersecretkey'
 
-@app.route("/")
-def home():
-    return "HumanID backend running 🚀"
+# 👇 banco simples (temporário)
+users = {}
 
+# 🔐 REGISTRO
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.json
+    email = data["email"]
+    password = data["password"]
+
+    if email in users:
+        return jsonify({"error": "User exists"}), 400
+
+    users[email] = {
+        "password": password,
+        "credits": 150
+    }
+
+    return jsonify({"message": "User created"})
+
+# 🔑 LOGIN
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.json
+    email = data["email"]
+    password = data["password"]
+
+    user = users.get(email)
+
+    if not user or user["password"] != password:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    token = jwt.encode({
+        "email": email,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(days=1)
+    }, app.config['SECRET_KEY'], algorithm="HS256")
+
+    return jsonify({"token": token})
+
+# 🔐 VERIFICAR TOKEN
+def verify_token():
+    token = request.headers.get("Authorization")
+
+    try:
+        data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        return data["email"]
+    except:
+        return None
+
+# 💳 CRÉDITOS
+@app.route("/credits", methods=["GET"])
+def credits():
+    email = verify_token()
+
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    return jsonify({"credits": users[email]["credits"]})
+
+# 🧠 ANALYZE REAL
 @app.route("/analyze", methods=["POST"])
 def analyze():
+    email = verify_token()
+
+    if not email:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if users[email]["credits"] <= 0:
+        return jsonify({"error": "Sem créditos"}), 403
+
     data = request.json
     text = data.get("text", "")
+
+    users[email]["credits"] -= 1
 
     try:
         response = requests.post(
@@ -22,30 +91,33 @@ def analyze():
                 'api_user': 'TEU_API_USER',
                 'api_secret': 'TEU_API_SECRET'
             },
-            timeout=3  # 🔥 LIMITE DE TEMPO
+            timeout=3
         )
 
         result = response.json()
 
         return jsonify({
-            "risk": "high",
-            "confidence": "90%",
-            "message": "Likely scam detected",
-            "source": "AI"
+            "result": result,
+            "credits_left": users[email]["credits"]
         })
 
     except:
         return jsonify({
             "risk": "medium",
-            "confidence": "70%",
-            "message": "Suspicious message",
-            "source": "fast-mode"
+            "message": "Fallback mode",
+            "credits_left": users[email]["credits"]
         })
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# 🌍 HOME
+@app.route("/")
+def home():
+    return "HumanID backend running 🚀"
 
+# 🔁 REDIRECT WWW
 @app.before_request
 def force_www_redirect():
     if request.host.startswith('www.'):
         return redirect(request.url.replace('www.', ''), code=301)
+
+if __name__ == "__main__":
+    app.run(debug=True) 
