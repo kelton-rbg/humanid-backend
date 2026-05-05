@@ -114,10 +114,20 @@ def home():
     return "HumanID backend running 🚀"
 
 # 🔁 REDIRECT WWW
+from flask import redirect, request
+
 @app.before_request
-def force_www_redirect():
-    if request.host.startswith('www.'):
-        return redirect(request.url.replace('www.', ''), code=301)
+def force_domain_redirect():
+    host = request.host
+    url = request.url
+
+    # Remove www
+    if host.startswith("www."):
+        return redirect(url.replace("www.", ""), code=301)
+
+    # Force HTTPS (Render já ajuda, mas garantimos)
+    if request.headers.get("X-Forwarded-Proto") == "http":
+        return redirect(url.replace("http://", "https://"), code=301)
 
 if __name__ == "__main__":
     app.run(debug=True) 
