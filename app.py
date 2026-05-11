@@ -142,3 +142,139 @@ def force_domain_redirect():
         return redirect(url.replace("http://", "https://"), code=301)
 if __name__ == "__main__":
     app.run(debug=True) 
+
+import os
+import stripe
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)
+
+# Stripe Secret Key
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
+# Stripe Price IDs
+PRICE_IDS = {
+    "starter": "price_1TVoTBRyx4mChIbOb3R037Mi",   # €4.99
+    "basic": "price_1TVoUpRyx4mChIbOuJvWg0YO",     # €9.99
+    "pro": "price_1TVoXJRyx4mChIbOeH9xeRAO",       # €19.99
+    "ultimate": "price_1TVoZ7Ryx4mChIbO3Z30mUQJ"   # €49.99
+}
+
+# Credit amounts
+CREDITS = {
+    "starter": 20,
+    "basic": 50,
+    "pro": 150,
+    "ultimate": 500
+}
+
+# Fake in-memory database (replace later with PostgreSQL)
+user_credits = {}
+
+@app.route("/")
+def home():
+    return "HumanID backend running 🚀"
+
+# Create Stripe Checkout
+@app.route("/create-checkout-session", methods=["POST"])
+def create_checkout_session():
+    data = request.json
+
+    pack = data.get("pack")
+    user_id = data.get("user_id")
+
+    if pack not in PRICE_IDS:
+        return jsonify({"error": "Invalid pack"}), 400
+
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        mode="payment",
+        line_items=[{
+            "price": PRICE_IDS[pack],
+            "quantity": 1,
+        }],
+        metadata={
+            "user_id": user_id,
+            "pack": pack
+        },
+        success_url="https://humanid.online/success",
+        cancel_url="https://humanid.online/cancel"
+    )
+
+    return jsonify({
+        "checkout_url": session.url
+    })
+
+# Stripe Webhook
+@app.route("/stripe-webhook", methods=["POST"])
+def stripe_webhook():
+
+    payload = request.data
+    sig_header = request.headers.get("Stripe-Signature")
+
+    endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload,
+            sig_header,
+            endpoint_secret
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    if event["type"] == "checkout.session.completed":
+
+        session = event["data"]["object"]
+
+        user_id = session["metadata"]["user_id"]
+        pack = session["metadata"]["pack"]
+
+        credits_to_add = CREDITS.get(pack, 0)
+
+        current = user_credits.get(user_id, 0)
+
+        user_credits[user_id] = current + credits_to_add
+
+        print(f"Added {credits_to_add} credits to {user_id}")
+
+    return jsonify({"status": "success"})
+
+# Check Credits
+@app.route("/credits/<user_id>")
+def get_credits(user_id):
+
+    credits = user_credits.get(user_id, 0)
+
+    return jsonify({
+        "credits": credits
+    })
+
+# Analyze Endpoint
+@app.route("/analyze", methods=["POST"])
+def analyze():
+
+    data = request.json
+
+    user_id = data.get("user_id")
+
+    current_credits = user_credits.get(user_id, 0)
+
+    if current_credits <= 0:
+        return jsonify({
+            "error": "Not enough credits"
+        }), 403
+
+    # Deduct 1 credit
+    user_credits[user_id] -= 1
+
+    return jsonify({
+        "result": "Analysis completed",
+        "remaining_credits": user_credits[user_id]
+    })
+
+if __name__ == "__main__":
+    app.run(debug=True)
