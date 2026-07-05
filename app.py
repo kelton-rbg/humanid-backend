@@ -108,7 +108,10 @@ def force_domain_redirect():
 
 @app.route("/")
 def home():
-    return "HumanID backend running 🚀"
+
+        return "VERSAO TESTE 12345"
+        
+  
 
 # =============================================================================
 # AUTENTICAÇÃO
