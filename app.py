@@ -23,6 +23,9 @@ import logging
 
 app = Flask(__name__)
 CORS(app)
+print("########################################")
+print("ESTOU RODANDO O APP.PY CERTO")
+print("########################################")
 
 # Segurança — obrigatório definir SECRET_KEY no Render
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
